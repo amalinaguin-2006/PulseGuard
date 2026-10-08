@@ -289,7 +289,15 @@ class _GuidanceRow extends StatelessWidget {
         Expanded(
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 250),
-            alignment: Alignment.centerLeft,
+            layoutBuilder:
+                (Widget? currentChild, List<Widget> previousChildren) =>
+                    Stack(
+                      alignment: Alignment.centerLeft,
+                      children: <Widget>[
+                        ...previousChildren,
+                        ?currentChild,
+                      ],
+                    ),
             child: Column(
               key: ValueKey<SignalGuidance>(guidance),
               crossAxisAlignment: CrossAxisAlignment.start,

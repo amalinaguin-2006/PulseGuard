@@ -3,21 +3,19 @@
 // Pulse Guard - Phase 4B: real-time PPG oscilloscope.
 //
 // Contents:
-//   * PpgWaveformStyle   - colours and sizes (dark neon by default)
-//   * PpgWaveformModel   - fixed-size ring buffer + smoothing state
-//   * PpgWaveformPainter - CustomPainter (grid, glowing curve, beat markers)
-//   * PpgWaveformView    - widget that feeds the model from the streams
+//   * WaveformDisplayMode - scroll vs hospital-style sweep
+//   * PpgWaveformStyle    - colours, geometry, and adaptive themes
+//   * PpgWaveformModel    - fixed-size ring buffer + auto-scaling envelope
+//   * PpgWaveformPainter  - CustomPainter (grid, glowing curve, beat markers, area fill)
+//   * PpgWaveformView     - high-performance stateful widget driving the canvas
 //
 // Performance notes:
 //   * Painting is driven by a Listenable passed to CustomPainter, so only the
 //     canvas repaints; no widget rebuilds happen per frame.
-//   * Paint objects, the Path and the gradient shaders are reused. Shaders are
-//     rebuilt only when the canvas size changes.
+//   * Paint objects, Path and shaders are reused across frames.
 //   * Samples live in preallocated typed-data ring buffers.
-//   * When there is no finger and the line has finished flattening, the frame
-//     driver stops requesting repaints.
-//   * The right edge follows a smoothed clock, so the curve scrolls evenly at
-//     the display refresh rate even though samples arrive at ~30 Hz.
+//   * The right edge follows a smoothed clock, scrolling evenly at the display
+//     refresh rate (60 Hz) even though frames arrive at ~30 FPS.
 
 import 'dart:async';
 import 'dart:math' as math;
@@ -29,11 +27,25 @@ import 'package:flutter/material.dart';
 import '../services/signal_processor_service.dart';
 
 // ---------------------------------------------------------------------------
+// Display Mode
+// ---------------------------------------------------------------------------
+
+/// Visual animation style of the waveform oscilloscope.
+enum WaveformDisplayMode {
+  /// Continuously scrolls from right to left like a modern pulse monitor (default).
+  scroll,
+
+  /// Sweeps across the canvas from left to right with an erase head like a
+  /// hospital cardiac monitor.
+  sweep,
+}
+
+// ---------------------------------------------------------------------------
 // Style
 // ---------------------------------------------------------------------------
 
 /// Colours and geometry of the oscilloscope. The defaults suit dark themes;
-/// use [PpgWaveformStyle.light] on light backgrounds.
+/// use [PpgWaveformStyle.light] on light backgrounds or [PpgWaveformStyle.adaptive].
 class PpgWaveformStyle {
   const PpgWaveformStyle({
     this.lineColor = const Color(0xFF22F5C8),
@@ -50,10 +62,13 @@ class PpgWaveformStyle {
     this.verticalFill = 0.42,
     this.gridDivisionsY = 4,
     this.gridIntervalMs = 500,
+    this.showAreaFill = true,
+    this.areaFillOpacity = 0.12,
   })  : assert(lineWidth > 0),
         assert(verticalFill > 0 && verticalFill <= 0.5),
         assert(gridDivisionsY >= 2),
-        assert(gridIntervalMs > 0);
+        assert(gridIntervalMs > 0),
+        assert(areaFillOpacity >= 0.0 && areaFillOpacity <= 1.0);
 
   /// Preset for light backgrounds.
   static const PpgWaveformStyle light = PpgWaveformStyle(
@@ -65,9 +80,16 @@ class PpgWaveformStyle {
     peakColor: Color(0xFFE11D48),
     backgroundTop: Color(0xFFF8FAFC),
     backgroundBottom: Color(0xFFE2E8F0),
+    areaFillOpacity: 0.08,
   );
 
-  /// Main curve colour (fades in from the left edge).
+  /// Factory creating an adaptive style matching the ambient [ThemeData.brightness].
+  factory PpgWaveformStyle.adaptive(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return isDark ? const PpgWaveformStyle() : PpgWaveformStyle.light;
+  }
+
+  /// Main curve colour (fades in from the left edge in scroll mode).
   final Color lineColor;
 
   /// Glow colour drawn behind the curve.
@@ -103,9 +125,14 @@ class PpgWaveformStyle {
   /// Number of horizontal grid bands.
   final int gridDivisionsY;
 
-  /// Time between vertical grid lines, in milliseconds. The lines scroll with
-  /// the waveform.
+  /// Time between vertical grid lines, in milliseconds.
   final int gridIntervalMs;
+
+  /// Whether to render a subtle translucent glow area fill beneath the curve.
+  final bool showAreaFill;
+
+  /// Maximum opacity of the area fill gradient.
+  final double areaFillOpacity;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,23 +267,25 @@ class PpgWaveformModel {
 // Painter
 // ---------------------------------------------------------------------------
 
-/// Draws the oscilloscope: gradient background, scrolling grid, centre
-/// baseline, glowing waveform that fades in from the left, beat markers and a
-/// leading dot. Repaints are driven by the `repaint` listenable.
+/// Draws the oscilloscope: gradient background, grid, centre baseline,
+/// glowing waveform, beat markers and leading dot.
 class PpgWaveformPainter extends CustomPainter {
   PpgWaveformPainter({
     required this.model,
     required this.style,
+    this.displayMode = WaveformDisplayMode.scroll,
     this.showPeakMarkers = true,
     super.repaint,
   });
 
   final PpgWaveformModel model;
   final PpgWaveformStyle style;
+  final WaveformDisplayMode displayMode;
   final bool showPeakMarkers;
 
   // Reused drawing objects (no allocation per frame).
   final Path _path = Path();
+  final Path _areaPath = Path();
   final Paint _background = Paint();
   late final Paint _gridPaint = Paint()
     ..color = style.gridColor
@@ -286,10 +315,15 @@ class PpgWaveformPainter extends CustomPainter {
     ..strokeWidth = style.lineWidth
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round;
+  final Paint _areaFill = Paint()..style = PaintingStyle.fill;
   late final Paint _peakGlow = Paint()..color = style.peakColor.withAlpha(70);
   late final Paint _peakCore = Paint()..color = style.peakColor;
   late final Paint _dotGlow = Paint()..color = style.glowColor.withAlpha(90);
   late final Paint _dotCore = Paint()..color = style.lineColor;
+  late final Paint _sweepCursor = Paint()
+    ..color = style.lineColor.withAlpha(160)
+    ..strokeWidth = 1.5
+    ..style = PaintingStyle.stroke;
 
   Size? _shaderSize;
 
@@ -303,28 +337,51 @@ class PpgWaveformPainter extends CustomPainter {
       <Color>[style.backgroundTop, style.backgroundBottom],
     );
 
-    // Horizontal fade: old samples (left) are transparent, new ones opaque.
     final from = Offset.zero;
     final to = Offset(size.width, 0.0);
     const stops = <double>[0.0, 0.45];
-    _line.shader = ui.Gradient.linear(
-      from,
-      to,
-      <Color>[style.lineColor.withAlpha(0), style.lineColor],
-      stops,
-    );
-    _glowInner.shader = ui.Gradient.linear(
-      from,
-      to,
-      <Color>[style.glowColor.withAlpha(0), style.glowColor.withAlpha(80)],
-      stops,
-    );
-    _glowOuter.shader = ui.Gradient.linear(
-      from,
-      to,
-      <Color>[style.glowColor.withAlpha(0), style.glowColor.withAlpha(34)],
-      stops,
-    );
+
+    if (displayMode == WaveformDisplayMode.scroll) {
+      // Horizontal fade: old samples (left) are transparent, new ones opaque.
+      _line.shader = ui.Gradient.linear(
+        from,
+        to,
+        <Color>[style.lineColor.withAlpha(0), style.lineColor],
+        stops,
+      );
+      _glowInner.shader = ui.Gradient.linear(
+        from,
+        to,
+        <Color>[style.glowColor.withAlpha(0), style.glowColor.withAlpha(80)],
+        stops,
+      );
+      _glowOuter.shader = ui.Gradient.linear(
+        from,
+        to,
+        <Color>[style.glowColor.withAlpha(0), style.glowColor.withAlpha(34)],
+        stops,
+      );
+    } else {
+      // Uniform neon for sweep mode.
+      _line.shader = null;
+      _line.color = style.lineColor;
+      _glowInner.shader = null;
+      _glowInner.color = style.glowColor.withAlpha(80);
+      _glowOuter.shader = null;
+      _glowOuter.color = style.glowColor.withAlpha(34);
+    }
+
+    if (style.showAreaFill) {
+      final alphaVal = (style.areaFillOpacity * 255.0).round().clamp(0, 255);
+      _areaFill.shader = ui.Gradient.linear(
+        Offset(0.0, 0.0),
+        Offset(0.0, size.height),
+        <Color>[
+          style.lineColor.withAlpha(alphaVal),
+          style.lineColor.withAlpha(0),
+        ],
+      );
+    }
   }
 
   @override
@@ -351,15 +408,22 @@ class PpgWaveformPainter extends CustomPainter {
       canvas.drawLine(Offset(0.0, y), Offset(size.width, y), _gridPaint);
     }
 
-    // Vertical lines locked to time, so they scroll with the waveform.
+    // Vertical lines.
     final window = model.windowMicros;
     final interval = style.gridIntervalMs * 1000;
     final now = model.nowMicros();
     final pxPerMicro = size.width / window;
-    var t = ((now - window) ~/ interval + 1) * interval;
-    for (; t <= now; t += interval) {
-      final x = size.width - (now - t) * pxPerMicro;
-      canvas.drawLine(Offset(x, 0.0), Offset(x, size.height), _gridPaint);
+
+    if (displayMode == WaveformDisplayMode.scroll) {
+      var t = ((now - window) ~/ interval + 1) * interval;
+      for (; t <= now; t += interval) {
+        final x = size.width - (now - t) * pxPerMicro;
+        canvas.drawLine(Offset(x, 0.0), Offset(x, size.height), _gridPaint);
+      }
+    } else {
+      for (var x = 0.0; x <= size.width; x += size.width * (interval / window)) {
+        canvas.drawLine(Offset(x, 0.0), Offset(x, size.height), _gridPaint);
+      }
     }
 
     // Centre baseline.
@@ -380,13 +444,29 @@ class PpgWaveformPainter extends CustomPainter {
 
     final window = model.windowMicros;
     final now = model.nowMicros();
-    final fromTime = now - window;
-    final xScale = size.width / window;
     final yScale = (size.height * style.verticalFill / model.envelope) * damping;
     final maxY = size.height - 2.0;
 
-    // Index of the last sample older than the window (kept so the curve
-    // enters from the left edge), or 0.
+    if (displayMode == WaveformDisplayMode.scroll) {
+      _paintScrollingWave(canvas, size, midY, yScale, maxY, now, window);
+    } else {
+      _paintSweepingWave(canvas, size, midY, yScale, maxY, now, window);
+    }
+  }
+
+  void _paintScrollingWave(
+    Canvas canvas,
+    Size size,
+    double midY,
+    double yScale,
+    double maxY,
+    int now,
+    int window,
+  ) {
+    final fromTime = now - window;
+    final xScale = size.width / window;
+    final count = model.count;
+
     var first = count - 1;
     while (first > 0 && model.timeAt(first) >= fromTime) {
       first--;
@@ -396,22 +476,39 @@ class PpgWaveformPainter extends CustomPainter {
       return;
     }
 
-    // Quadratic smoothing through segment midpoints.
     _path.reset();
+    _areaPath.reset();
+
     var prevX = 0.0;
     var prevY = 0.0;
+    var startX = 0.0;
+
     for (var i = first; i < count; i++) {
       final x = size.width - (now - model.timeAt(i)) * xScale;
       final y = math.max(2.0, math.min(maxY, midY - model.valueAt(i) * yScale));
       if (i == first) {
         _path.moveTo(x, y);
+        _areaPath.moveTo(x, midY);
+        _areaPath.lineTo(x, y);
+        startX = x;
       } else {
-        _path.quadraticBezierTo(prevX, prevY, (prevX + x) / 2.0, (prevY + y) / 2.0);
+        final midX = (prevX + x) / 2.0;
+        final midYPoint = (prevY + y) / 2.0;
+        _path.quadraticBezierTo(prevX, prevY, midX, midYPoint);
+        _areaPath.quadraticBezierTo(prevX, prevY, midX, midYPoint);
       }
       prevX = x;
       prevY = y;
     }
     _path.lineTo(prevX, prevY);
+    _areaPath.lineTo(prevX, prevY);
+    _areaPath.lineTo(prevX, midY);
+    _areaPath.lineTo(startX, midY);
+    _areaPath.close();
+
+    if (style.showAreaFill) {
+      canvas.drawPath(_areaPath, _areaFill);
+    }
 
     canvas
       ..drawPath(_path, _glowOuter)
@@ -435,10 +532,69 @@ class PpgWaveformPainter extends CustomPainter {
       ..drawCircle(Offset(prevX, prevY), 3.0, _dotCore);
   }
 
+  void _paintSweepingWave(
+    Canvas canvas,
+    Size size,
+    double midY,
+    double yScale,
+    double maxY,
+    int now,
+    int window,
+  ) {
+    final count = model.count;
+    final sweepFrac = ((now % window) / window);
+    final sweepX = size.width * sweepFrac;
+    final blankingPx = size.width * 0.08; // 8% blanking erase zone
+
+    _path.reset();
+    var lastPointDrawn = false;
+    var prevX = 0.0;
+    var prevY = 0.0;
+
+    for (var i = 0; i < count; i++) {
+      final t = model.timeAt(i);
+      final age = now - t;
+      if (age > window || age < 0) continue;
+
+      final x = size.width * ((t % window) / window);
+      final y = math.max(2.0, math.min(maxY, midY - model.valueAt(i) * yScale));
+
+      // Skip drawing inside blanking erase head
+      final distFromSweep = (x - sweepX);
+      if (distFromSweep > 0 && distFromSweep < blankingPx) {
+        lastPointDrawn = false;
+        continue;
+      }
+
+      if (!lastPointDrawn || (x - prevX).abs() > 40.0) {
+        _path.moveTo(x, y);
+      } else {
+        _path.quadraticBezierTo(
+            prevX, prevY, (prevX + x) / 2.0, (prevY + y) / 2.0);
+      }
+      prevX = x;
+      prevY = y;
+      lastPointDrawn = true;
+    }
+
+    canvas
+      ..drawPath(_path, _glowOuter)
+      ..drawPath(_path, _glowInner)
+      ..drawPath(_path, _line);
+
+    // Draw sweep cursor line
+    canvas.drawLine(
+      Offset(sweepX, 0.0),
+      Offset(sweepX, size.height),
+      _sweepCursor,
+    );
+  }
+
   @override
   bool shouldRepaint(PpgWaveformPainter oldDelegate) {
     return oldDelegate.model != model ||
         !identical(oldDelegate.style, style) ||
+        oldDelegate.displayMode != displayMode ||
         oldDelegate.showPeakMarkers != showPeakMarkers;
   }
 }
@@ -450,7 +606,7 @@ class PpgWaveformPainter extends CustomPainter {
 /// Live PPG oscilloscope fed by the signal processor streams.
 ///
 /// Subscribes in `initState`, cancels in `dispose`, and resubscribes if the
-/// streams change. Needs bounded width; the height is [height].
+/// streams change. Needs bounded width; the height defaults to [height].
 class PpgWaveformView extends StatefulWidget {
   const PpgWaveformView({
     super.key,
@@ -459,19 +615,20 @@ class PpgWaveformView extends StatefulWidget {
     this.initialStatus = AcquisitionStatus.noFinger,
     this.window = const Duration(seconds: 4),
     this.style = const PpgWaveformStyle(),
+    this.displayMode = WaveformDisplayMode.scroll,
     this.height = 180.0,
     this.borderRadius = 16.0,
     this.showPeakMarkers = true,
     this.minAmplitude = 0.02,
   });
 
-  /// Convenience constructor that reads both streams (and the current
-  /// status) from a [SignalProcessorService].
+  /// Convenience constructor reading streams directly from a [SignalProcessorService].
   factory PpgWaveformView.fromProcessor(
     SignalProcessorService processor, {
     Key? key,
     Duration window = const Duration(seconds: 4),
     PpgWaveformStyle style = const PpgWaveformStyle(),
+    WaveformDisplayMode displayMode = WaveformDisplayMode.scroll,
     double height = 180.0,
     double borderRadius = 16.0,
     bool showPeakMarkers = true,
@@ -484,6 +641,7 @@ class PpgWaveformView extends StatefulWidget {
       initialStatus: processor.currentMetrics.status,
       window: window,
       style: style,
+      displayMode: displayMode,
       height: height,
       borderRadius: borderRadius,
       showPeakMarkers: showPeakMarkers,
@@ -501,6 +659,10 @@ class PpgWaveformView extends StatefulWidget {
   final Duration window;
 
   final PpgWaveformStyle style;
+
+  /// Scroll or sweep display animation.
+  final WaveformDisplayMode displayMode;
+
   final double height;
   final double borderRadius;
   final bool showPeakMarkers;
@@ -547,6 +709,7 @@ class _PpgWaveformViewState extends State<PpgWaveformView>
     return PpgWaveformPainter(
       model: _model,
       style: widget.style,
+      displayMode: widget.displayMode,
       showPeakMarkers: widget.showPeakMarkers,
       repaint: _repaint,
     );
@@ -603,6 +766,7 @@ class _PpgWaveformViewState extends State<PpgWaveformView>
     _model.windowMicros = widget.window.inMicroseconds;
     _model.minAmplitude = widget.minAmplitude;
     if (!identical(oldWidget.style, widget.style) ||
+        oldWidget.displayMode != widget.displayMode ||
         oldWidget.showPeakMarkers != widget.showPeakMarkers) {
       _painter = _buildPainter();
     }

@@ -145,6 +145,15 @@ class PeakDetector {
     return _cont[(_head - _count + index + capacity) % capacity] == 1;
   }
 
+  /// Chronological list snapshot of all currently stored intervals (ms).
+  List<double> get recentIbis {
+    final list = <double>[];
+    for (var i = 0; i < _count; i++) {
+      list.add(ibiAt(i));
+    }
+    return list;
+  }
+
   /// Valid intervals accepted since the last [reset].
   int get validBeats => _validBeats;
 
@@ -200,6 +209,7 @@ class PeakDetector {
   /// must be strictly increasing. Detection lags by one sample, because a
   /// peak is only known once the following sample has been seen.
   BeatEvent update(double y, int timestampMicros) {
+    if (!y.isFinite) return BeatEvent.none;
     var event = BeatEvent.none;
 
     // Exponential decay of the peak level based on real elapsed time.

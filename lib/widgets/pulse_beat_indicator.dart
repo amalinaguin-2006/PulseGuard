@@ -28,10 +28,10 @@ class PulseBeatIndicator extends StatefulWidget {
     this.showBpm = true,
     this.bpmTextColor = const Color(0xFFF1F5F9),
     this.labelColor = const Color(0xFF94A3B8),
+    this.onBeat,
   }) : assert(size > 0);
 
-  /// Convenience constructor that reads everything from a
-  /// [SignalProcessorService].
+  /// Convenience constructor that reads streams directly from a [SignalProcessorService].
   factory PulseBeatIndicator.fromProcessor(
     SignalProcessorService processor, {
     Key? key,
@@ -39,6 +39,7 @@ class PulseBeatIndicator extends StatefulWidget {
     Color activeColor = const Color(0xFFFF4D6D),
     Color inactiveColor = const Color(0xFF475569),
     bool showBpm = true,
+    VoidCallback? onBeat,
   }) {
     return PulseBeatIndicator(
       key: key,
@@ -49,6 +50,7 @@ class PulseBeatIndicator extends StatefulWidget {
       activeColor: activeColor,
       inactiveColor: inactiveColor,
       showBpm: showBpm,
+      onBeat: onBeat,
     );
   }
 
@@ -76,11 +78,14 @@ class PulseBeatIndicator extends StatefulWidget {
   final Color bpmTextColor;
   final Color labelColor;
 
+  /// Optional callback invoked when a valid systolic beat is animated.
+  final VoidCallback? onBeat;
+
   @override
-  State<PulseBeatIndicator> createState() => _PulseBeatIndicatorState();
+  State<PulseBeatIndicator> createState() => PulseBeatIndicatorState();
 }
 
-class _PulseBeatIndicatorState extends State<PulseBeatIndicator>
+class PulseBeatIndicatorState extends State<PulseBeatIndicator>
     with SingleTickerProviderStateMixin {
   /// Heart occupies this fraction of the indicator's width.
   static const double _heartFraction = 0.34;
@@ -93,6 +98,14 @@ class _PulseBeatIndicatorState extends State<PulseBeatIndicator>
 
   late AcquisitionStatus _status;
   double? _bpm;
+
+  /// Manually triggers a heartbeat pulse animation (useful for testing and feedback).
+  void triggerBeat() {
+    if (mounted) {
+      _controller.forward(from: 0.0);
+      widget.onBeat?.call();
+    }
+  }
 
   @override
   void initState() {
@@ -145,7 +158,7 @@ class _PulseBeatIndicatorState extends State<PulseBeatIndicator>
 
   void _onPoint(FilteredPpgPoint point) {
     if (point.isPeak && _status == AcquisitionStatus.measuring) {
-      _controller.forward(from: 0.0);
+      triggerBeat();
     }
   }
 
@@ -236,6 +249,9 @@ class _PulseBeatIndicatorState extends State<PulseBeatIndicator>
                     fontSize: 36.0,
                     fontWeight: FontWeight.w700,
                     height: 1.1,
+                    fontFeatures: const <FontFeature>[
+                      FontFeature.tabularFigures(),
+                    ],
                   ),
                 ),
                 Text(

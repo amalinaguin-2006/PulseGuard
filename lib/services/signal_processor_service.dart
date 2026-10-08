@@ -21,6 +21,8 @@
 //   if (reading != null) await DatabaseService.instance.insertPpgReading(reading);
 
 import 'dart:async';
+import 'dart:collection';
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -66,6 +68,12 @@ class FilteredPpgPoint {
   /// True when a beat was detected at this sample (the detector confirms a
   /// peak one sample late).
   final bool isPeak;
+
+  Map<String, dynamic> toMap() => {
+        't': timestampMicros,
+        'v': double.parse(value.toStringAsFixed(3)),
+        'p': isPeak ? 1 : 0,
+      };
 }
 
 /// Snapshot of all derived biometrics. Nullable values mean "not available
@@ -161,6 +169,7 @@ class SignalProcessorConfig {
     this.staleAfterMs = 4000,
     this.metricsHeartbeatMs = 1000,
     this.minPeakAmplitude = 0.05,
+    this.waveformHistoryCapacity = 150,
   });
 
   /// Sampling rate assumed before the real rate is measured.
@@ -230,6 +239,9 @@ class SignalProcessorConfig {
 
   /// Peak amplitude floor passed to the detector (see [PeakDetector]).
   final double minPeakAmplitude;
+
+  /// Number of recent filtered points kept in memory for waveform serialization.
+  final int waveformHistoryCapacity;
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +254,9 @@ class SignalProcessorService {
   SignalProcessorService({
     this.config = const SignalProcessorConfig(),
     double? baselineRmssdMs,
-  })  : _baselineRmssdMs = baselineRmssdMs,
+  })  : _baselineRmssdMs = (baselineRmssdMs != null && baselineRmssdMs > 0)
+            ? baselineRmssdMs
+            : null,
         _filter = BandpassFilter(
           sampleRateHz: config.nominalSampleRateHz,
           lowCutHz: config.lowCutHz,
@@ -259,6 +273,8 @@ class SignalProcessorService {
       StreamController<FilteredPpgPoint>.broadcast();
   final StreamController<BiometricMetrics> _metricsController =
       StreamController<BiometricMetrics>.broadcast();
+
+  final Queue<FilteredPpgPoint> _waveformHistory = Queue<FilteredPpgPoint>();
 
   StreamSubscription<PpgFrameSample>? _subscription;
   bool _disposed = false;
@@ -351,13 +367,11 @@ class SignalProcessorService {
     await _metricsController.close();
   }
 
-  /// Converts the current metrics to a [PpgReading] for storage.
+  /// Converts the current metrics to a [PpgReading] for SQLite storage.
   ///
   /// Returns null unless the pipeline is measuring and BPM, RMSSD and stress
-  /// are all available, so it can never produce a row that violates the
-  /// database CHECK constraints. Check [BiometricMetrics.isReliable] first if
-  /// you only want to store good measurements. [rawPpgData] is an optional
-  /// JSON trace to keep with the reading.
+  /// are all available, guaranteeing all database constraints are met.
+  /// If [rawPpgData] is omitted, automatically exports the recent filtered trace.
   PpgReading? buildReading({String? rawPpgData}) {
     final m = _current;
     final bpm = m.bpm;
@@ -369,14 +383,24 @@ class SignalProcessorService {
         stress == null) {
       return null;
     }
+    final trace = rawPpgData ?? exportRecentWaveformJson();
     return PpgReading(
-      timestamp: DateTime.now(),
+      timestamp: DateTime.now().toIso8601String(),
       bpm: bpm,
       rmssd: rmssd,
       stressIndex: stress,
       signalQuality: (m.signalQuality * 100.0).clamp(0.0, 100.0).toDouble(),
-      rawPpgData: rawPpgData,
+      rawPpgData: trace,
     );
+  }
+
+  /// Exports a compact JSON string representing the rolling waveform history.
+  String exportRecentWaveformJson({int? maxPoints}) {
+    final limit = maxPoints ?? config.waveformHistoryCapacity;
+    final points = _waveformHistory.toList();
+    final start = points.length > limit ? points.length - limit : 0;
+    final slice = points.sublist(start).map((p) => p.toMap()).toList();
+    return jsonEncode(slice);
   }
 
   /// Maps RMSSD to a 0-100 stress score, decreasing in RMSSD:
@@ -577,14 +601,19 @@ class SignalProcessorService {
     _lastValidBeatMicros = 0;
     _pendingPublish = false;
     _errorReported = false;
+    _waveformHistory.clear();
   }
 
   void _emitWaveform(int t, double y, bool isPeak) {
-    // Skip the allocation when nothing is listening.
+    final point = FilteredPpgPoint(timestampMicros: t, value: y, isPeak: isPeak);
+
+    if (_waveformHistory.length >= config.waveformHistoryCapacity) {
+      _waveformHistory.removeFirst();
+    }
+    _waveformHistory.addLast(point);
+
     if (_waveformController.hasListener) {
-      _waveformController.add(
-        FilteredPpgPoint(timestampMicros: t, value: y, isPeak: isPeak),
-      );
+      _waveformController.add(point);
     }
   }
 

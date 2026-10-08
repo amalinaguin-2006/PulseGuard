@@ -66,6 +66,7 @@ class Biquad {
 
   /// Filters one sample.
   double process(double x) {
+    if (!x.isFinite) return 0.0;
     final y = _b0 * x + _z1;
     _z1 = _b1 * x - _a1 * y + _z2;
     _z2 = _b2 * x - _a2 * y;
@@ -83,6 +84,7 @@ class Biquad {
   /// otherwise get when the first sample is far from zero (camera values sit
   /// around 100-255, not 0).
   double prime(double x) {
+    if (!x.isFinite) return 0.0;
     final dcGain = (_b0 + _b1 + _b2) / (1.0 + _a1 + _a2);
     final y = dcGain * x;
     _z2 = _b2 * x - _a2 * y;
@@ -96,11 +98,9 @@ class Biquad {
 class BandpassFilter {
   BandpassFilter({
     double sampleRateHz = 30.0,
-    double lowCutHz = 0.7,
-    double highCutHz = 3.5,
-  })  : _lowCutHz = lowCutHz,
-        _highCutHz = highCutHz,
-        _sampleRateHz = sampleRateHz {
+    this.lowCutHz = 0.7,
+    this.highCutHz = 3.5,
+  }) : _sampleRateHz = sampleRateHz {
     configure(sampleRateHz: sampleRateHz);
   }
 
@@ -108,33 +108,34 @@ class BandpassFilter {
   final Biquad _lowpass = Biquad();
 
   double _sampleRateHz;
-  final double _lowCutHz;
-  final double _highCutHz;
+
+  /// Lower cutoff in Hz.
+  final double lowCutHz;
+
+  /// Upper cutoff in Hz.
+  final double highCutHz;
 
   /// Sample rate the filter is currently designed for.
   double get sampleRateHz => _sampleRateHz;
-
-  /// Lower cutoff in Hz.
-  double get lowCutHz => _lowCutHz;
-
-  /// Upper cutoff in Hz.
-  double get highCutHz => _highCutHz;
 
   /// Re-designs both sections for [sampleRateHz] (e.g. the measured camera
   /// frame rate) and clears the state. Throws [ArgumentError] when the
   /// cutoffs are not valid for that rate (the high cutoff must be below
   /// Nyquist, so the rate must exceed 7 Hz for a 3.5 Hz cutoff).
   void configure({required double sampleRateHz}) {
-    if (_lowCutHz >= _highCutHz) {
+    if (lowCutHz >= highCutHz) {
       throw ArgumentError('lowCutHz must be below highCutHz.');
     }
-    _highpass.designHighpass(sampleRateHz, _lowCutHz);
-    _lowpass.designLowpass(sampleRateHz, _highCutHz);
+    _highpass.designHighpass(sampleRateHz, lowCutHz);
+    _lowpass.designLowpass(sampleRateHz, highCutHz);
     _sampleRateHz = sampleRateHz;
   }
 
   /// Filters one sample. The output is zero-mean pulsatile signal.
-  double process(double x) => _lowpass.process(_highpass.process(x));
+  double process(double x) {
+    if (!x.isFinite) return 0.0;
+    return _lowpass.process(_highpass.process(x));
+  }
 
   /// Clears all state.
   void reset() {
@@ -146,6 +147,7 @@ class BandpassFilter {
   /// forever. Call with the first raw sample so the output starts near zero
   /// instead of ringing for several seconds.
   void prime(double x) {
+    if (!x.isFinite) return;
     final highpassOut = _highpass.prime(x);
     _lowpass.prime(highpassOut);
   }
