@@ -1,30 +1,58 @@
-// This is a basic Flutter widget test.
+// test/widget_test.dart
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Widget and UI tests for PulseGuard.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:pulse_guard/main.dart';
+import 'package:pulse_guard/theme/app_theme.dart';
+import 'package:pulse_guard/widgets/gradient_pill_button.dart';
+import 'package:pulse_guard/widgets/pulse_guard_header.dart';
+import 'package:pulse_guard/widgets/pulsing_heart_logo.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('GradientPillButton renders label and triggers tap', (WidgetTester tester) async {
+    bool tapped = false;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GradientPillButton(
+            text: 'Test Button',
+            onPressed: () => tapped = true,
+          ),
+        ),
+      ),
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(find.text('Test Button'), findsOneWidget);
+    await tester.tap(find.text('Test Button'));
+    expect(tapped, isTrue);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('PulseGuardHeader renders brand title and user name', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: PulseGuardHeader(userName: 'Alex Mercer'),
+        ),
+      ),
+    );
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('PulseGuard'), findsOneWidget);
+    expect(find.text('Alex Mercer'), findsOneWidget);
+  });
+
+  testWidgets('HeartShieldPainter paints successfully', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: CustomPaint(
+            size: Size(100, 100),
+            painter: HeartShieldPainter(),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(CustomPaint), findsWidgets);
   });
 }
