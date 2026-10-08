@@ -1,4 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- ── PulseGuard: Camera & Flash Permissions ────────────────────────── -->
+    <!-- Required for camera-based photoplethysmography (PPG) frame capture. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Required to activate the rear-camera torch during PPG acquisition. -->
+    <uses-permission android:name="android.permission.FLASHLIGHT" />
+
+    <!-- ── Hardware Feature Declarations ─────────────────────────────────── -->
+    <!-- The app requires a rear-facing camera with flash and autofocus.     -->
+    <uses-feature android:name="android.hardware.camera" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.flash" android:required="true" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="true" />
+
     <application
         android:label="pulse_guard"
         android:name="${applicationName}"
