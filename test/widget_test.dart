@@ -4,7 +4,6 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:pulse_guard/theme/app_theme.dart';
 import 'package:pulse_guard/widgets/gradient_pill_button.dart';
 import 'package:pulse_guard/widgets/pulse_guard_header.dart';
 import 'package:pulse_guard/widgets/pulsing_heart_logo.dart';

@@ -71,8 +71,8 @@ class _AppBootstrapScreenState extends State<AppBootstrapScreen> {
 
   Future<void> _checkInitialRoute() async {
     try {
-      // Add a slight natural delay to show the branded splash
-      await Future<void>.delayed(const Duration(milliseconds: 900));
+      // Add a slight natural delay to show the branded splash and heartbeat
+      await Future<void>.delayed(const Duration(milliseconds: 1800));
 
       final profile = await DatabaseService.instance.fetchCurrentProfile();
       if (!mounted) return;
@@ -99,7 +99,7 @@ class _AppBootstrapScreenState extends State<AppBootstrapScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const PulsingHeartLogo(size: 130),
+            const PulsingHeartLogo(size: 150),
             const SizedBox(height: 24),
             Text('PulseGuard', style: PulseTextStyles.brandTitle),
             const SizedBox(height: 6),

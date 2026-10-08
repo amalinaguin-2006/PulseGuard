@@ -321,13 +321,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   border: Border.all(color: PulseColors.optimal, width: 1.2),
                                 ),
                                 alignment: Alignment.center,
-                                child: Text(
-                                  'NON-SMOKER',
-                                  style: TextStyle(
-                                    color: PulseColors.optimal,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 12,
-                                    letterSpacing: 0.5,
+                                child: const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 4),
+                                    child: Text(
+                                      'NON-SMOKER',
+                                      style: TextStyle(
+                                        color: PulseColors.optimal,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
@@ -434,26 +440,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Icon(icon, color: PulseColors.crimson, size: 20),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: PulseTextStyles.metricLabel.copyWith(
-                  fontSize: 10,
-                  letterSpacing: 0.8,
-                  color: PulseColors.crimsonLight,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: PulseTextStyles.metricLabel.copyWith(
+                    fontSize: 10,
+                    letterSpacing: 0.8,
+                    color: PulseColors.crimsonLight,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: PulseTextStyles.bodyMedium.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: PulseColors.textDark,
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  overflow: TextOverflow.ellipsis,
+                  style: PulseTextStyles.bodyMedium.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: PulseColors.textDark,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -482,23 +491,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Icon(icon1, color: PulseColors.crimson, size: 20),
                 const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title1,
-                      style: PulseTextStyles.metricLabel.copyWith(
-                        fontSize: 10,
-                        color: PulseColors.crimsonLight,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title1,
+                        style: PulseTextStyles.metricLabel.copyWith(
+                          fontSize: 10,
+                          color: PulseColors.crimsonLight,
+                        ),
                       ),
-                    ),
-                    Text(
-                      value1,
-                      style: PulseTextStyles.bodyMedium.copyWith(
-                        fontWeight: FontWeight.bold,
+                      Text(
+                        value1,
+                        overflow: TextOverflow.ellipsis,
+                        style: PulseTextStyles.bodyMedium.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -514,23 +526,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Icon(icon2, color: PulseColors.crimson, size: 20),
                 const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title2,
-                      style: PulseTextStyles.metricLabel.copyWith(
-                        fontSize: 10,
-                        color: PulseColors.crimsonLight,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title2,
+                        style: PulseTextStyles.metricLabel.copyWith(
+                          fontSize: 10,
+                          color: PulseColors.crimsonLight,
+                        ),
                       ),
-                    ),
-                    Text(
-                      value2,
-                      style: PulseTextStyles.bodyMedium.copyWith(
-                        fontWeight: FontWeight.bold,
+                      Text(
+                        value2,
+                        overflow: TextOverflow.ellipsis,
+                        style: PulseTextStyles.bodyMedium.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),

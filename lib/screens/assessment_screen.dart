@@ -38,11 +38,37 @@ class _AssessmentScreenState extends State<AssessmentScreen>
     super.initState();
     _heartBeatController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 700),
-    )..repeat(reverse: true);
-    _heartScale = Tween<double>(begin: 0.85, end: 1.15).animate(
-      CurvedAnimation(parent: _heartBeatController, curve: Curves.easeInOut),
-    );
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
+    _heartScale = TweenSequence<double>([
+      // Lub: Primary systolic beat (expansion & recoil)
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 1.18)
+            .chain(CurveTween(curve: Curves.easeOutQuad)),
+        weight: 14,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.18, end: 0.96)
+            .chain(CurveTween(curve: Curves.easeInOutQuad)),
+        weight: 14,
+      ),
+      // Dub: Secondary pulse
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.96, end: 1.08)
+            .chain(CurveTween(curve: Curves.easeOutQuad)),
+        weight: 12,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.08, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInOutQuad)),
+        weight: 12,
+      ),
+      // Diastolic rest
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 48,
+      ),
+    ]).animate(_heartBeatController);
 
     widget.measurementController.addListener(_onMeasurementUpdate);
 
@@ -153,13 +179,23 @@ class _AssessmentScreenState extends State<AssessmentScreen>
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(
-                                ctrl.camera.isFingerDetected
-                                    ? Icons.favorite
-                                    : Icons.touch_app_outlined,
-                                color: PulseColors.crimson,
-                                size: 18,
-                              ),
+                              ctrl.camera.isFingerDetected
+                                  ? Image.asset(
+                                      'assets/images/heart_organ.png',
+                                      width: 18,
+                                      height: 18,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (context, error, stackTrace) => const Icon(
+                                        Icons.favorite,
+                                        size: 18,
+                                        color: PulseColors.crimson,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.touch_app_outlined,
+                                      color: PulseColors.crimson,
+                                      size: 18,
+                                    ),
                               const SizedBox(width: 8),
                               Flexible(
                                 child: Text(
@@ -373,11 +409,11 @@ class _AssessmentScreenState extends State<AssessmentScreen>
         LayoutBuilder(
           builder: (context, constraints) {
             final trackWidth = constraints.maxWidth;
-            const thumbSize = 28.0;
+            const thumbSize = 34.0;
             final thumbLeft = (trackWidth - thumbSize) * progress;
 
             return SizedBox(
-              height: 38,
+              height: 42,
               child: Stack(
                 alignment: Alignment.centerLeft,
                 children: [
@@ -399,7 +435,7 @@ class _AssessmentScreenState extends State<AssessmentScreen>
                       borderRadius: BorderRadius.circular(6),
                     ),
                   ),
-                  // Animated Heart Thumb
+                  // Animated Anatomical Heart Thumb
                   Positioned(
                     left: thumbLeft,
                     child: ScaleTransition(
@@ -414,14 +450,20 @@ class _AssessmentScreenState extends State<AssessmentScreen>
                           boxShadow: [
                             BoxShadow(
                               color: PulseColors.crimson.withAlpha(80),
-                              blurRadius: 6,
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        child: const Icon(
-                          Icons.favorite,
-                          size: 16,
-                          color: PulseColors.crimson,
+                        padding: const EdgeInsets.all(3.0),
+                        child: Image.asset(
+                          'assets/images/heart_organ.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (context, error, stackTrace) => const Icon(
+                            Icons.favorite,
+                            size: 16,
+                            color: PulseColors.crimson,
+                          ),
                         ),
                       ),
                     ),

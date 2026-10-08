@@ -220,33 +220,41 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                   child: Row(
                                     children: [
                                       // Day Label
-                                      Text(
-                                        dayKey,
-                                        style: PulseTextStyles.heading3.copyWith(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w800,
-                                        ),
-                                      ),
-                                      const Spacer(),
-
-                                      // Daily Avg Badge
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: statusColor.withAlpha(25),
-                                          borderRadius: BorderRadius.circular(16),
-                                          border: Border.all(color: statusColor, width: 1),
-                                        ),
+                                      Flexible(
                                         child: Text(
-                                          'DAILY AVG: $avgReadiness | $statusLabel',
-                                          style: TextStyle(
-                                            color: statusColor,
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.bold,
+                                          dayKey,
+                                          style: PulseTextStyles.heading3.copyWith(
+                                            fontSize: 15,
+                                            fontWeight: FontWeight.w800,
                                           ),
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                       const SizedBox(width: 8),
+
+                                      // Daily Avg Badge
+                                      Flexible(
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: statusColor.withAlpha(25),
+                                              borderRadius: BorderRadius.circular(16),
+                                              border: Border.all(color: statusColor, width: 1),
+                                            ),
+                                            child: Text(
+                                              'DAILY AVG: $avgReadiness | $statusLabel',
+                                              style: TextStyle(
+                                                color: statusColor,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
 
                                       Icon(
                                         isExpanded
@@ -401,6 +409,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 const SizedBox(height: 4),
                 Text(
                   '${r.bpm.round()} BPM  |  RMSSD: ${r.rmssd.round()} ms  |  SQI: ${r.signalQuality.round()}%',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: PulseTextStyles.caption.copyWith(
                     color: PulseColors.textMedium,
                     fontWeight: FontWeight.w500,

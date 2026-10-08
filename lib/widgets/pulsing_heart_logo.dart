@@ -88,7 +88,7 @@ class HeartShieldPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// A pulsing heart-shield logo widget with slow, biological rhythm.
+/// A pulsing heart-shield logo widget with authentic biological heartbeat rhythm.
 class PulsingHeartLogo extends StatefulWidget {
   final double size;
 
@@ -101,18 +101,78 @@ class PulsingHeartLogo extends StatefulWidget {
 class _PulsingHeartLogoState extends State<PulsingHeartLogo>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
-  late final Animation<double> _animation;
+  late final Animation<double> _scaleAnimation;
+  late final Animation<double> _glowAlphaAnimation;
 
   @override
   void initState() {
     super.initState();
+    // Authentic cardiac cycle (~1250ms = resting ~50-60 BPM biological rhythm)
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
-    );
+      duration: const Duration(milliseconds: 1250),
+    )..repeat();
+
+    // Cardiac lub-dub dual contraction sequence
+    _scaleAnimation = TweenSequence<double>([
+      // 1. "Lub" primary systolic beat (quick expansion)
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 1.13)
+            .chain(CurveTween(curve: Curves.easeOutQuad)),
+        weight: 12,
+      ),
+      // 2. Systolic rebound
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.13, end: 0.98)
+            .chain(CurveTween(curve: Curves.easeInOutQuad)),
+        weight: 12,
+      ),
+      // 3. "Dub" secondary pulse (dicrotic wave)
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.98, end: 1.07)
+            .chain(CurveTween(curve: Curves.easeOutQuad)),
+        weight: 10,
+      ),
+      // 4. Secondary recoil back to baseline
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.07, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeInOutQuad)),
+        weight: 10,
+      ),
+      // 5. Diastolic resting pause between heartbeats
+      TweenSequenceItem(
+        tween: ConstantTween<double>(1.0),
+        weight: 56,
+      ),
+    ]).animate(_controller);
+
+    // Synchronized ambient cardiac aura
+    _glowAlphaAnimation = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 10, end: 65)
+            .chain(CurveTween(curve: Curves.easeOutQuad)),
+        weight: 12,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 65, end: 15)
+            .chain(CurveTween(curve: Curves.easeInOutQuad)),
+        weight: 12,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 15, end: 40)
+            .chain(CurveTween(curve: Curves.easeOutQuad)),
+        weight: 10,
+      ),
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 40, end: 8)
+            .chain(CurveTween(curve: Curves.easeInOutQuad)),
+        weight: 10,
+      ),
+      TweenSequenceItem(
+        tween: ConstantTween<double>(8),
+        weight: 56,
+      ),
+    ]).animate(_controller);
   }
 
   @override
@@ -123,11 +183,44 @@ class _PulsingHeartLogoState extends State<PulsingHeartLogo>
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _animation,
-      child: CustomPaint(
-        size: Size(widget.size, widget.size),
-        painter: const HeartShieldPainter(),
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final scale = _scaleAnimation.value;
+        final alpha = _glowAlphaAnimation.value.toInt().clamp(0, 255);
+        final blur = (28.0 * (scale - 0.95)).clamp(4.0, 32.0);
+
+        return Transform.scale(
+          scale: scale,
+          child: Container(
+            width: widget.size,
+            height: widget.size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: PulseColors.crimson.withAlpha(alpha),
+                  blurRadius: blur,
+                  spreadRadius: (scale > 1.0) ? (scale - 1.0) * 10.0 : 0.0,
+                ),
+              ],
+            ),
+            child: child,
+          ),
+        );
+      },
+      child: Image.asset(
+        'assets/images/pulseguard_logo.png',
+        width: widget.size,
+        height: widget.size,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) {
+          // Graceful fallback for test or unbundled asset environments
+          return CustomPaint(
+            size: Size(widget.size, widget.size),
+            painter: const HeartShieldPainter(),
+          );
+        },
       ),
     );
   }

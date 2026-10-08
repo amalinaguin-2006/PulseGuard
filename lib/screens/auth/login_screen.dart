@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 import '../../widgets/gradient_pill_button.dart';
+import '../../widgets/pulsing_heart_logo.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -16,28 +17,12 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen>
-    with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  late final AnimationController _pulseController;
-  late final Animation<double> _pulseAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.96, end: 1.04).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-  }
 
   @override
   void dispose() {
-    _pulseController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -67,11 +52,8 @@ class _LoginScreenState extends State<LoginScreen>
               ),
               const SizedBox(height: 16),
 
-              // ── Pulsing heart-shield logo ──
-              ScaleTransition(
-                scale: _pulseAnimation,
-                child: _HeartShieldLogo(),
-              ),
+              // ── Pulsing heart-shield logo with authentic heartbeat animation ──
+              const PulsingHeartLogo(size: 150),
               const SizedBox(height: 16),
 
               // ── Brand title ──
@@ -173,88 +155,4 @@ class _LoginScreenState extends State<LoginScreen>
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Heart-Shield Logo (drawn with Flutter primitives)
-// ─────────────────────────────────────────────────────────────────────────────
 
-class _HeartShieldLogo extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 180,
-      height: 200,
-      child: CustomPaint(painter: _ShieldHeartPainter()),
-    );
-  }
-}
-
-class _ShieldHeartPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-
-    // Shield background
-    final shieldPath = Path()
-      ..moveTo(cx, size.height * 0.05)
-      ..cubicTo(cx - size.width * 0.55, size.height * 0.0,
-          cx - size.width * 0.5, size.height * 0.45,
-          cx, size.height * 0.95)
-      ..cubicTo(cx + size.width * 0.5, size.height * 0.45,
-          cx + size.width * 0.55, size.height * 0.0,
-          cx, size.height * 0.05);
-    shieldPath.close();
-
-    final shieldFill = Paint()
-      ..color = const Color(0xFFF2D5D5)
-      ..style = PaintingStyle.fill;
-    final shieldBorder = Paint()
-      ..color = PulseColors.crimson
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-
-    canvas.drawPath(shieldPath, shieldFill);
-    canvas.drawPath(shieldPath, shieldBorder);
-
-    // Heart icon inside the shield
-    final heartSize = size.width * 0.38;
-    final heartX = cx;
-    final heartY = cy + size.height * 0.02;
-
-    final heartPath = Path();
-    heartPath.moveTo(heartX, heartY + heartSize * 0.25);
-
-    // Left lobe
-    heartPath.cubicTo(
-      heartX - heartSize * 0.5, heartY - heartSize * 0.15,
-      heartX - heartSize * 0.7, heartY - heartSize * 0.5,
-      heartX - heartSize * 0.2, heartY - heartSize * 0.5,
-    );
-    heartPath.cubicTo(
-      heartX - heartSize * 0.0, heartY - heartSize * 0.5,
-      heartX, heartY - heartSize * 0.25,
-      heartX, heartY - heartSize * 0.1,
-    );
-
-    // Right lobe
-    heartPath.cubicTo(
-      heartX, heartY - heartSize * 0.25,
-      heartX + heartSize * 0.0, heartY - heartSize * 0.5,
-      heartX + heartSize * 0.2, heartY - heartSize * 0.5,
-    );
-    heartPath.cubicTo(
-      heartX + heartSize * 0.7, heartY - heartSize * 0.5,
-      heartX + heartSize * 0.5, heartY - heartSize * 0.15,
-      heartX, heartY + heartSize * 0.25,
-    );
-    heartPath.close();
-
-    final heartPaint = Paint()
-      ..color = PulseColors.crimson
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(heartPath, heartPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}

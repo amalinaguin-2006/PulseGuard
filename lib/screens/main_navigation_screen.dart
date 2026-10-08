@@ -89,24 +89,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildNavItem(
-                index: 0,
-                label: 'HOME',
-                icon: Icons.home_rounded,
+              Expanded(
+                child: _buildNavItem(
+                  index: 0,
+                  label: 'HOME',
+                  icon: Icons.home_rounded,
+                ),
               ),
-              _buildNavItem(
-                index: 1,
-                label: 'PulseLog',
-                icon: Icons.analytics_outlined,
+              Expanded(
+                child: _buildNavItem(
+                  index: 1,
+                  label: 'PulseLog',
+                  icon: Icons.analytics_outlined,
+                ),
               ),
-              _buildNavItem(
-                index: 2,
-                label: 'Profile',
-                icon: Icons.person_rounded,
+              Expanded(
+                child: _buildNavItem(
+                  index: 2,
+                  label: 'Profile',
+                  icon: Icons.person_rounded,
+                ),
               ),
             ],
           ),
@@ -135,7 +140,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
           gradient: isSelected
               ? const LinearGradient(
@@ -162,25 +168,29 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ]
               : null,
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              color: isSelected ? PulseColors.white : PulseColors.white.withAlpha(160),
-              size: 22,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                color: isSelected ? PulseColors.white : PulseColors.white.withAlpha(180),
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
-                fontSize: 13,
-                letterSpacing: 0.5,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? PulseColors.white : PulseColors.white.withAlpha(160),
+                size: 20,
               ),
-            ),
-          ],
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: isSelected ? PulseColors.white : PulseColors.white.withAlpha(180),
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+                  fontSize: 13,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

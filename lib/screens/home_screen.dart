@@ -137,6 +137,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   // Sub-caption recommendation
                   Center(
                     child: Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 20),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
                         color: PulseColors.cardBackground,
@@ -148,11 +149,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         children: [
                           const Icon(Icons.info_outline, size: 16, color: PulseColors.crimson),
                           const SizedBox(width: 8),
-                          Text(
-                            'Please sit quietly for 5 minutes before starting',
-                            style: PulseTextStyles.caption.copyWith(
-                              color: PulseColors.crimson,
-                              fontWeight: FontWeight.w600,
+                          Flexible(
+                            child: Text(
+                              'Please sit quietly for 5 minutes before starting',
+                              style: PulseTextStyles.caption.copyWith(
+                                color: PulseColors.crimson,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ],
