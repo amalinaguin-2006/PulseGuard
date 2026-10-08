@@ -33,6 +33,8 @@ dependencies:
   google_fonts: ^6.2.1
   # High-performance 2-D chart library for live PPG waveform oscilloscope.
   fl_chart: ^0.70.2
+  image_picker: ^1.2.4
+  crypto: ^3.0.7
 
 dev_dependencies:
   flutter_test:

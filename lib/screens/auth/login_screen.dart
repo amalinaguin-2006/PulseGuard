@@ -1,14 +1,15 @@
 // lib/screens/auth/login_screen.dart
 //
-// PulseGuard — Phase 6: Login screen with pulsing heart-shield logo.
+// PulseGuard — Login screen with pulsing heart-shield logo and local authentication.
 
 import 'package:flutter/material.dart';
 
+import '../../controllers/pulse_guard_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/gradient_pill_button.dart';
 import '../../widgets/pulsing_heart_logo.dart';
-import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
+import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -20,6 +21,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -28,9 +30,46 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
-    // Mock authentication — navigate to main app.
-    Navigator.of(context).pushReplacementNamed('/main');
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    setState(() => _isLoading = true);
+    final session = PulseGuardScope.of(context).sessionController;
+
+    if (email.isEmpty && password.isEmpty) {
+      // If user presses login directly without typing, check if profile exists
+      await session.loadSession();
+      if (!mounted) return;
+      if (session.isAuthenticated) {
+        setState(() => _isLoading = false);
+        Navigator.of(context).pushReplacementNamed('/main');
+        return;
+      }
+    }
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter your email and password')),
+      );
+      return;
+    }
+
+    final success = await session.signIn(email, password);
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (success) {
+      Navigator.of(context).pushReplacementNamed('/main');
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(session.errorMessage ?? 'Authentication failed. Please check credentials.'),
+          backgroundColor: PulseColors.crimson,
+        ),
+      );
+    }
   }
 
   @override
@@ -118,10 +157,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 8),
 
                     // Login button
-                    GradientPillButton(
-                      label: 'Login',
-                      onPressed: _handleLogin,
-                    ),
+                    _isLoading
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(12),
+                              child: CircularProgressIndicator(color: PulseColors.crimson),
+                            ),
+                          )
+                        : GradientPillButton(
+                            label: 'Login',
+                            onPressed: _handleLogin,
+                          ),
                     const SizedBox(height: 12),
 
                     Text('or', style: PulseTextStyles.caption),
@@ -154,5 +200,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
-

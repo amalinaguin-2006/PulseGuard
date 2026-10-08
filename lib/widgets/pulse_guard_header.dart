@@ -45,7 +45,7 @@ class PulseGuardHeader extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  userName,
+                  userName.trim().split(RegExp(r'\s+')).first,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: PulseTextStyles.body.copyWith(

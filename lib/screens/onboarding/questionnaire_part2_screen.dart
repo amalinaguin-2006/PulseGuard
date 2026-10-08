@@ -4,8 +4,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../models/user_profile.dart';
-import '../../services/database_service.dart';
+import '../../controllers/pulse_guard_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/gradient_pill_button.dart';
 import '../../widgets/pulsing_heart_logo.dart';
@@ -106,17 +105,21 @@ class _QuestionnairePart2ScreenState extends State<QuestionnairePart2Screen> {
     setState(() => _isSaving = true);
 
     try {
-      // 1. Build and save UserProfile into SQLite
-      final profile = UserProfile(
-        name: widget.fullName,
+      // 1. Build and save questionnaire data into SQLite via SessionController
+      final session = PulseGuardScope.of(context).sessionController;
+      await session.saveQuestionnaireData(
+        sex: widget.sex,
+        dob: widget.dob,
         age: widget.age,
-        gender: widget.sex.toLowerCase(),
-        baselineBpm: null, // calibrated on initial tests
-        baselineHrv: null,
-        createdAt: DateTime.now().toIso8601String(),
+        height: widget.height,
+        weight: widget.weight,
+        cardiacDevices: widget.cardiacDevices,
+        cardiacEvents: widget.cardiacEvents,
+        arrhythmia: _selectedArrhythmia.toList(),
+        conditions: _selectedConditions.toList(),
+        medications: _selectedMedications.toList(),
+        nicotine: _selectedNicotine,
       );
-
-      await DatabaseService.instance.insertUserProfile(profile);
 
       if (!mounted) return;
       setState(() => _isSaving = false);

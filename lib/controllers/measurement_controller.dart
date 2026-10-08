@@ -716,9 +716,10 @@ class MeasurementController extends ChangeNotifier with WidgetsBindingObserver {
     _ticker = null;
 
     final reading = PpgReading(
-      timestamp: DateTime.now().toIso8601String(),
+      timestamp: DateTime.now().toUtc().toIso8601String(),
       bpm: bpm,
       rmssd: rmssd,
+      sdnn: usable.sdnn ?? 0.0,
       stressIndex: stress,
       signalQuality: (usable.signalQuality * 100.0).clamp(0.0, 100.0).toDouble(),
       rawPpgData: _buildTraceJson(),

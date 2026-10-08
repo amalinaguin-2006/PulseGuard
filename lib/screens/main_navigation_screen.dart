@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 
 import '../controllers/history_controller.dart';
 import '../controllers/measurement_controller.dart';
+import '../controllers/pulse_guard_scope.dart';
 import '../theme/app_theme.dart';
 import 'history_screen.dart';
 import 'home_screen.dart';
@@ -14,10 +15,14 @@ import 'profile_screen.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final int initialIndex;
+  final HistoryController? historyController;
+  final MeasurementController? measurementController;
 
   const MainNavigationScreen({
     super.key,
     this.initialIndex = 0,
+    this.historyController,
+    this.measurementController,
   });
 
   @override
@@ -26,28 +31,42 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   late int _currentIndex;
-  late final HistoryController _historyController;
-  late final MeasurementController _measurementController;
+  HistoryController? _localHistory;
+  MeasurementController? _localMeasurement;
+
+  HistoryController get _historyController =>
+      widget.historyController ??
+      _localHistory ??
+      PulseGuardScope.of(context).historyController;
+
+  MeasurementController get _measurementController =>
+      widget.measurementController ??
+      _localMeasurement ??
+      PulseGuardScope.of(context).measurementController;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-    _historyController = HistoryController();
-    _measurementController = MeasurementController(
-      onReadingSaved: (id, reading) {
-        _historyController.registerSavedReading(reading);
-      },
-    );
 
-    // Initial load of history and profile
-    _historyController.load();
+    if (widget.historyController == null) {
+      // Local fallback if no scope or constructor injection
+      _localHistory = HistoryController();
+      _localMeasurement = MeasurementController(
+        onReadingSaved: (id, reading) {
+          _localHistory?.registerSavedReading(reading);
+        },
+      );
+      _localHistory!.load();
+    } else {
+      widget.historyController!.load();
+    }
   }
 
   @override
   void dispose() {
-    _measurementController.dispose();
-    _historyController.dispose();
+    _localMeasurement?.dispose();
+    _localHistory?.dispose();
     super.dispose();
   }
 

@@ -1,17 +1,8 @@
-/// PulseGuard — SQLite Database Service (Singleton)
+/// PulseGuard — SQLite Database Service (Singleton, Schema v2)
 ///
 /// Manages the local `pulse_guard.db` database lifecycle and exposes
-/// typed CRUD operations for [UserProfile] and [PpgReading] models.
-///
-/// Design decisions:
-///   • **Singleton** via private constructor + static [instance] getter
-///     so every widget / service shares one connection pool.
-///   • **Lazy initialisation** — the database file is created on the
-///     first call to any public method, not at import time.
-///   • **Index on `ppg_readings.timestamp`** for O(log n) date-range
-///     queries used by trend charts and history views.
-///   • All public methods wrap calls in try/catch and rethrow with
-///     context so upstream callers can show meaningful error UI.
+/// typed CRUD operations for [UserProfile] and [PpgReading] models with
+/// full support for v1 -> v2 schema migrations.
 library;
 
 import 'package:path/path.dart' as p;
@@ -27,11 +18,11 @@ import '../models/user_profile.dart';
 /// Database file name stored in the platform-default databases directory.
 const String _kDatabaseName = 'pulse_guard.db';
 
-/// Schema version.  Increment this and add migration logic in
-/// [_onUpgrade] when the schema changes in future releases.
-const int _kDatabaseVersion = 1;
+/// Schema version 2: Added email, health_json, avatar_path, password_hash,
+/// salt to user_profiles; added sdnn to ppg_readings.
+const int _kDatabaseVersion = 2;
 
-// Table & column names kept as constants to avoid typo-induced bugs.
+// Table & column names
 const String _kTableUserProfiles = 'user_profiles';
 const String _kTablePpgReadings = 'ppg_readings';
 
@@ -39,33 +30,39 @@ const String _kTablePpgReadings = 'ppg_readings';
 // DDL Statements
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// CREATE TABLE for user profiles.
+/// CREATE TABLE for user profiles (v2).
 const String _kCreateUserProfilesTable = '''
   CREATE TABLE $_kTableUserProfiles (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    name         TEXT    NOT NULL,
-    age          INTEGER NOT NULL,
-    gender       TEXT    NOT NULL,
-    baseline_bpm REAL,
-    baseline_hrv REAL,
-    created_at   TEXT    NOT NULL
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    name          TEXT    NOT NULL,
+    age           INTEGER NOT NULL,
+    gender        TEXT    NOT NULL,
+    email         TEXT,
+    health_json   TEXT,
+    baseline_bpm  REAL,
+    baseline_hrv  REAL,
+    avatar_path   TEXT,
+    password_hash TEXT,
+    salt          TEXT,
+    created_at    TEXT    NOT NULL
   )
 ''';
 
-/// CREATE TABLE for PPG telemetry readings.
+/// CREATE TABLE for PPG telemetry readings (v2).
 const String _kCreatePpgReadingsTable = '''
   CREATE TABLE $_kTablePpgReadings (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp      TEXT    NOT NULL,
     bpm            REAL    NOT NULL,
     rmssd          REAL    NOT NULL,
+    sdnn           REAL    NOT NULL DEFAULT 0.0,
     stress_index   REAL    NOT NULL,
     signal_quality REAL    NOT NULL,
     raw_ppg_data   TEXT
   )
 ''';
 
-/// Index on timestamp for fast chronological and date-range queries.
+/// Index on timestamp for O(log n) date-range and chronological queries.
 const String _kCreateTimestampIndex = '''
   CREATE INDEX idx_ppg_timestamp ON $_kTablePpgReadings (timestamp)
 ''';
@@ -74,32 +71,25 @@ const String _kCreateTimestampIndex = '''
 // Database Service
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Singleton service that owns the SQLite connection and exposes typed
-/// CRUD helpers for every persistent model in PulseGuard.
+/// Singleton service that owns the SQLite connection and exposes typed CRUD.
 class DatabaseService {
-  // ── Singleton plumbing ─────────────────────────────────────────────────
-
   DatabaseService._internal();
 
   /// The single shared instance of this service.
   static final DatabaseService instance = DatabaseService._internal();
 
-  /// The lazily-initialised database handle.
+  /// The lazily-initialized database handle.
   Database? _database;
 
-  /// Returns the open database handle, creating the file and tables on
-  /// the very first invocation.
+  /// Returns the open database handle, creating the file and tables on first call.
   Future<Database> get database async {
     if (_database != null && _database!.isOpen) return _database!;
     _database = await _initDatabase();
     return _database!;
   }
 
-  // ── Initialisation & Schema ────────────────────────────────────────────
-
-  /// Opens (or creates) the database file and runs the schema DDL.
+  /// Opens or creates the database file with migration support.
   Future<Database> _initDatabase() async {
-    // Resolve the platform-specific databases directory.
     final databasesPath = await getDatabasesPath();
     final path = p.join(databasesPath, _kDatabaseName);
 
@@ -111,9 +101,8 @@ class DatabaseService {
     );
   }
 
-  /// Called exactly once when the database file is first created.
+  /// Called when the database file is first created.
   Future<void> _onCreate(Database db, int version) async {
-    // Use a batch so all DDL runs in a single transaction.
     final batch = db.batch();
     batch.execute(_kCreateUserProfilesTable);
     batch.execute(_kCreatePpgReadingsTable);
@@ -121,24 +110,39 @@ class DatabaseService {
     await batch.commit(noResult: true);
   }
 
-  /// Placeholder for future schema migrations.
-  ///
-  /// When bumping [_kDatabaseVersion], add incremental ALTER / CREATE
-  /// statements here keyed on [oldVersion] → [newVersion] ranges.
+  /// Handles incremental schema migrations.
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // Example pattern for future migrations:
-    // if (oldVersion < 2) {
-    //   await db.execute('ALTER TABLE ...');
-    // }
+    if (oldVersion < 2) {
+      // Migrate v1 -> v2: Add new columns if missing
+      await _safeAddColumn(db, _kTableUserProfiles, 'email', 'TEXT');
+      await _safeAddColumn(db, _kTableUserProfiles, 'health_json', 'TEXT');
+      await _safeAddColumn(db, _kTableUserProfiles, 'avatar_path', 'TEXT');
+      await _safeAddColumn(db, _kTableUserProfiles, 'password_hash', 'TEXT');
+      await _safeAddColumn(db, _kTableUserProfiles, 'salt', 'TEXT');
+      await _safeAddColumn(
+          db, _kTablePpgReadings, 'sdnn', 'REAL NOT NULL DEFAULT 0.0');
+    }
+  }
+
+  /// Safely attempts to add a column, ignoring error if it already exists.
+  Future<void> _safeAddColumn(
+    Database db,
+    String table,
+    String column,
+    String type,
+  ) async {
+    try {
+      await db.execute('ALTER TABLE $table ADD COLUMN $column $type;');
+    } catch (_) {
+      // Column may already exist from earlier test runs
+    }
   }
 
   // ═════════════════════════════════════════════════════════════════════════
-  //  USER PROFILE CRUD
+  // USER PROFILE CRUD
   // ═════════════════════════════════════════════════════════════════════════
 
-  /// Inserts a new [UserProfile] and returns the auto-generated row id.
-  ///
-  /// Throws a [DatabaseException] if a constraint is violated.
+  /// Inserts a new [UserProfile] and returns the generated row id.
   Future<int> insertUserProfile(UserProfile profile) async {
     try {
       final db = await database;
@@ -153,8 +157,6 @@ class DatabaseService {
   }
 
   /// Updates an existing [UserProfile] identified by its [id].
-  ///
-  /// Returns the number of rows affected (expected: 1).
   Future<int> updateUserProfile(UserProfile profile) async {
     if (profile.id == null) {
       throw ArgumentError('Cannot update a UserProfile without an id.');
@@ -172,17 +174,13 @@ class DatabaseService {
     }
   }
 
-  /// Fetches the most-recently created [UserProfile], or `null` if none
-  /// exists yet (first-launch state).
-  ///
-  /// PulseGuard is designed as a single-user app, so the "current" profile
-  /// is simply the latest row ordered by creation timestamp.
+  /// Fetches the most recent [UserProfile], or `null` if none exists yet.
   Future<UserProfile?> fetchCurrentProfile() async {
     try {
       final db = await database;
       final rows = await db.query(
         _kTableUserProfiles,
-        orderBy: 'created_at DESC',
+        orderBy: 'id DESC',
         limit: 1,
       );
       if (rows.isEmpty) return null;
@@ -209,11 +207,28 @@ class DatabaseService {
     }
   }
 
+  /// Fetches a [UserProfile] by its [email], or `null` if not found.
+  Future<UserProfile?> fetchUserProfileByEmail(String email) async {
+    try {
+      final db = await database;
+      final rows = await db.query(
+        _kTableUserProfiles,
+        where: 'LOWER(email) = ?',
+        whereArgs: [email.trim().toLowerCase()],
+        limit: 1,
+      );
+      if (rows.isEmpty) return null;
+      return UserProfile.fromMap(rows.first);
+    } catch (e) {
+      throw Exception('Failed to fetch user profile by email ($email): $e');
+    }
+  }
+
   // ═════════════════════════════════════════════════════════════════════════
-  //  PPG READING CRUD
+  // PPG READING CRUD
   // ═════════════════════════════════════════════════════════════════════════
 
-  /// Inserts a new [PpgReading] and returns the auto-generated row id.
+  /// Inserts a new [PpgReading] and returns the generated row id.
   Future<int> insertPpgReading(PpgReading reading) async {
     try {
       final db = await database;
@@ -228,9 +243,6 @@ class DatabaseService {
   }
 
   /// Returns the most recent [limit] PPG readings ordered newest-first.
-  ///
-  /// Used by the dashboard trend chart and recent-history list.
-  /// Defaults to 30 readings — enough for a meaningful short-term trend.
   Future<List<PpgReading>> fetchRecentReadings({int limit = 30}) async {
     try {
       final db = await database;
@@ -245,11 +257,7 @@ class DatabaseService {
     }
   }
 
-  /// Returns all PPG readings whose [timestamp] falls within the
-  /// inclusive range `[start, end]`.
-  ///
-  /// Both [start] and [end] must be ISO-8601 strings so that SQLite's
-  /// lexicographic comparison produces correct chronological ordering.
+  /// Returns all PPG readings whose [timestamp] falls in the range `[start, end]`.
   Future<List<PpgReading>> fetchReadingsByDateRange(
     String start,
     String end,
@@ -271,8 +279,6 @@ class DatabaseService {
   }
 
   /// Deletes a single PPG reading by its [id].
-  ///
-  /// Returns the number of rows deleted (expected: 0 or 1).
   Future<int> deleteReading(int id) async {
     try {
       final db = await database;
@@ -286,10 +292,7 @@ class DatabaseService {
     }
   }
 
-  /// Removes **all** PPG readings from the database.
-  ///
-  /// This is a destructive operation intended for "Reset Data" flows.
-  /// Returns the number of rows deleted.
+  /// Removes all PPG readings from the database.
   Future<int> clearAllReadings() async {
     try {
       final db = await database;
@@ -300,14 +303,10 @@ class DatabaseService {
   }
 
   // ═════════════════════════════════════════════════════════════════════════
-  //  LIFECYCLE
+  // LIFECYCLE
   // ═════════════════════════════════════════════════════════════════════════
 
   /// Closes the database connection.
-  ///
-  /// Call this during app teardown if you need deterministic cleanup.
-  /// After calling [close], the next access to [database] will
-  /// transparently re-open the connection.
   Future<void> close() async {
     final db = _database;
     if (db != null && db.isOpen) {

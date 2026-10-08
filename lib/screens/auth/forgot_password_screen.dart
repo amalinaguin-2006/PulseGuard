@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../controllers/pulse_guard_scope.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/gradient_pill_button.dart';
 import '../../widgets/pulsing_heart_logo.dart';
@@ -45,18 +46,21 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     if (!otpVerified || !mounted) return;
 
     // Step 3: Show new password dialog
-    final passwordReset = await _showNewPasswordDialog();
-    if (!passwordReset || !mounted) return;
+    final newPassword = await _showNewPasswordDialog();
+    if (newPassword == null || !mounted) return;
 
-    // Success -> Forward to main app
+    final session = PulseGuardScope.of(context).sessionController;
+    await session.resetPassword(email: email, newPassword: newPassword);
+
+    // Success -> Forward to login
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Password updated successfully! Welcome back.'),
+        content: Text('Password updated successfully! Please sign in.'),
         backgroundColor: PulseColors.optimal,
       ),
     );
-    Navigator.of(context).pushNamedAndRemoveUntil('/main', (route) => false);
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
   Future<bool> _showOtpDialog(String email) async {
@@ -167,11 +171,11 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     return result ?? false;
   }
 
-  Future<bool> _showNewPasswordDialog() async {
+  Future<String?> _showNewPasswordDialog() async {
     final newPassController = TextEditingController();
     final confirmPassController = TextEditingController();
 
-    final result = await showDialog<bool>(
+    final result = await showDialog<String>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
@@ -208,7 +212,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
+            onPressed: () => Navigator.of(ctx).pop(null),
             child: Text(
               'Cancel',
               style: TextStyle(color: PulseColors.crimson.withAlpha(180)),
@@ -218,7 +222,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             onPressed: () {
               if (newPassController.text.isNotEmpty &&
                   newPassController.text == confirmPassController.text) {
-                Navigator.of(ctx).pop(true);
+                Navigator.of(ctx).pop(newPassController.text.trim());
               } else {
                 ScaffoldMessenger.of(ctx).showSnackBar(
                   const SnackBar(content: Text('Passwords must match and not be empty')),
@@ -239,7 +243,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
     newPassController.dispose();
     confirmPassController.dispose();
-    return result ?? false;
+    return result;
   }
 
   @override

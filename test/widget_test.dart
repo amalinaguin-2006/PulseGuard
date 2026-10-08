@@ -37,7 +37,7 @@ void main() {
     );
 
     expect(find.text('PulseGuard'), findsOneWidget);
-    expect(find.text('Alex Mercer'), findsOneWidget);
+    expect(find.text('Alex'), findsOneWidget);
   });
 
   testWidgets('HeartShieldPainter paints successfully', (WidgetTester tester) async {

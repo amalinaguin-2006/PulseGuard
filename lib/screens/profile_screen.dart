@@ -1,10 +1,15 @@
 // lib/screens/profile_screen.dart
 //
-// PulseGuard — Phase 6: User profile view with biometric data and edit modal.
+// PulseGuard — User profile view with biometric data, questionnaire telemetry,
+// avatar selection via image_picker, profile editing, and session management.
 
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../controllers/history_controller.dart';
+import '../controllers/pulse_guard_scope.dart';
 import '../models/user_profile.dart';
 import '../theme/app_theme.dart';
 import '../widgets/pulse_guard_header.dart';
@@ -142,10 +147,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               name: nameCtrl.text.trim(),
               age: newAge,
               gender: selectedGender.toLowerCase(),
-              createdAt: DateTime.now().toIso8601String(),
+              createdAt: DateTime.now().toUtc().toIso8601String(),
             );
 
+      final session = PulseGuardScope.of(context).sessionController;
+      await session.updateProfile(
+        name: newProfile.name,
+        age: newProfile.age,
+        gender: newProfile.gender,
+      );
       await widget.historyController.saveProfile(newProfile);
+
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -156,10 +168,84 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showAvatarPicker() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Avatar image selection opened')),
+  Future<void> _showAvatarPicker() async {
+    final picker = ImagePicker();
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: PulseColors.cream,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Select Profile Photo', style: PulseTextStyles.heading3),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: PulseColors.crimson),
+                title: const Text('Take Photo with Camera'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: PulseColors.crimson),
+                title: const Text('Choose from Gallery'),
+                onTap: () => Navigator.of(ctx).pop(ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
+
+    if (source != null) {
+      try {
+        final pickedFile = await picker.pickImage(
+          source: source,
+          maxWidth: 600,
+          maxHeight: 600,
+          imageQuality: 85,
+        );
+        if (pickedFile != null && mounted) {
+          final session = PulseGuardScope.of(context).sessionController;
+          await session.updateAvatar(pickedFile.path);
+          await widget.historyController.load();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Avatar updated successfully'),
+              backgroundColor: PulseColors.optimal,
+            ),
+          );
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to select image: $e')),
+        );
+      }
+    }
+  }
+
+  String _formatDob(String iso) {
+    try {
+      final dt = DateTime.parse(iso);
+      final day = dt.day.toString().padLeft(2, '0');
+      final month = dt.month.toString().padLeft(2, '0');
+      return '$day.$month.${dt.year}';
+    } catch (_) {
+      return iso;
+    }
+  }
+
+  String _formatListField(dynamic raw, String fallback) {
+    if (raw is List && raw.isNotEmpty) {
+      final list = raw.map((e) => e.toString()).where((e) => e != 'None').toList();
+      if (list.isNotEmpty) return list.join(', ');
+    }
+    return fallback;
   }
 
   @override
@@ -171,6 +257,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final userName = profile?.name ?? 'Alex Mercer';
         final userAge = profile?.age ?? 26;
         final userGender = (profile?.gender ?? 'Male').toUpperCase();
+        final avatarPath = profile?.avatarPath;
+
+        // Parse health questionnaire JSON if present
+        Map<String, dynamic>? healthData;
+        if (profile?.healthJson != null) {
+          try {
+            healthData = jsonDecode(profile!.healthJson!) as Map<String, dynamic>;
+          } catch (_) {}
+        }
+
+        final userEmail = profile?.email ?? 'alex.mercer@pulseguard.io';
+        final userHeight = healthData?['height'] as String? ?? "5' 9\"";
+        final userWeight = healthData?['weight'] != null ? "${healthData!['weight']} kg" : '72 kg';
+        final userDobRaw = healthData?['dob'] as String?;
+        final userDob = userDobRaw != null ? _formatDob(userDobRaw) : '15.05.1998';
+        final nicotineStatus = (healthData?['nicotine'] as String? ?? 'Non-user').toUpperCase();
+
+        final cardiacDeviceStr = _formatListField(healthData?['cardiac_devices'], 'NONE');
+        final cardiacEventsStr = _formatListField(healthData?['cardiac_events'], 'NONE RECORDED');
+        final arrhythmiaStr = _formatListField(healthData?['arrhythmia'], 'NONE REPORTED');
+        final conditionsStr = _formatListField(healthData?['conditions'], 'NONE');
+        final medicationsStr = _formatListField(healthData?['medications'], 'NONE');
 
         return Scaffold(
           backgroundColor: PulseColors.cream,
@@ -185,7 +293,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const Divider(color: Color(0xFFF2D5D5), thickness: 1, indent: 20, endIndent: 20),
                   const SizedBox(height: 12),
 
-                  // Avatar & Edit Icon
+                  // Avatar & Camera Overlay Badge
                   Center(
                     child: Stack(
                       children: [
@@ -204,12 +312,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               ),
                             ],
                           ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.person_rounded,
-                              size: 64,
-                              color: PulseColors.white,
-                            ),
+                          child: ClipOval(
+                            child: (avatarPath != null && File(avatarPath).existsSync())
+                                ? Image.file(
+                                    File(avatarPath),
+                                    width: 110,
+                                    height: 110,
+                                    fit: BoxFit.cover,
+                                  )
+                                : const Center(
+                                    child: Icon(
+                                      Icons.person_rounded,
+                                      size: 64,
+                                      color: PulseColors.white,
+                                    ),
+                                  ),
                           ),
                         ),
                         // Camera overlay badge
@@ -273,7 +390,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _buildProfilePill(
                           icon: Icons.email_outlined,
                           title: 'EMAIL ADDRESS',
-                          value: 'alex.mercer@pulseguard.io',
+                          value: userEmail,
                         ),
                         const SizedBox(height: 10),
 
@@ -292,14 +409,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _buildDualPill(
                           icon1: Icons.straighten_outlined,
                           title1: 'HEIGHT',
-                          value1: "5' 9\"",
+                          value1: userHeight,
                           icon2: Icons.monitor_weight_outlined,
                           title2: 'WEIGHT',
-                          value2: '72 kg',
+                          value2: userWeight,
                         ),
                         const SizedBox(height: 10),
 
-                        // DOB and Smoker Badge
+                        // DOB and Nicotine Badge
                         Row(
                           children: [
                             Expanded(
@@ -307,7 +424,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: _buildProfilePill(
                                 icon: Icons.calendar_today_outlined,
                                 title: 'DOB',
-                                value: '15.05.1998',
+                                value: userDob,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -316,19 +433,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 14),
                                 decoration: BoxDecoration(
-                                  color: PulseColors.optimal.withAlpha(20),
+                                  color: nicotineStatus.contains('NON')
+                                      ? PulseColors.optimal.withAlpha(20)
+                                      : PulseColors.moderate.withAlpha(25),
                                   borderRadius: BorderRadius.circular(22),
-                                  border: Border.all(color: PulseColors.optimal, width: 1.2),
+                                  border: Border.all(
+                                    color: nicotineStatus.contains('NON')
+                                        ? PulseColors.optimal
+                                        : PulseColors.moderate,
+                                    width: 1.2,
+                                  ),
                                 ),
                                 alignment: Alignment.center,
-                                child: const FittedBox(
+                                child: FittedBox(
                                   fit: BoxFit.scaleDown,
                                   child: Padding(
-                                    padding: EdgeInsets.symmetric(horizontal: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
                                     child: Text(
-                                      'NON-SMOKER',
+                                      nicotineStatus.contains('NON') ? 'NON-SMOKER' : nicotineStatus,
                                       style: TextStyle(
-                                        color: PulseColors.optimal,
+                                        color: nicotineStatus.contains('NON')
+                                            ? PulseColors.optimal
+                                            : PulseColors.moderate,
                                         fontWeight: FontWeight.w800,
                                         fontSize: 12,
                                         letterSpacing: 0.5,
@@ -359,31 +485,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _buildProfilePill(
                           icon: Icons.monitor_heart_outlined,
                           title: 'CARDIAC DEVICE',
-                          value: 'NONE',
+                          value: cardiacDeviceStr,
                         ),
                         const SizedBox(height: 10),
                         _buildProfilePill(
                           icon: Icons.history_edu_outlined,
                           title: 'CARDIAC EVENTS',
-                          value: 'NONE RECORDED',
+                          value: cardiacEventsStr,
                         ),
                         const SizedBox(height: 10),
                         _buildProfilePill(
                           icon: Icons.waves_outlined,
                           title: 'ARRHYTHMIA',
-                          value: 'NONE REPORTED',
+                          value: arrhythmiaStr,
                         ),
                         const SizedBox(height: 10),
                         _buildProfilePill(
                           icon: Icons.healing_outlined,
                           title: 'ACTIVE CHRONIC CONDITIONS',
-                          value: 'NONE',
+                          value: conditionsStr,
                         ),
                         const SizedBox(height: 10),
                         _buildProfilePill(
                           icon: Icons.medication_outlined,
                           title: 'ACTIVE MEDICATION',
-                          value: 'NONE',
+                          value: medicationsStr,
                         ),
                       ],
                     ),
@@ -395,6 +521,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: OutlinedButton.icon(
                       onPressed: () {
+                        final session = PulseGuardScope.of(context).sessionController;
+                        session.signOut();
                         Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
                       },
                       icon: const Icon(Icons.logout, color: PulseColors.crimson),

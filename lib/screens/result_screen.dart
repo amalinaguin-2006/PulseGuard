@@ -141,7 +141,7 @@ class _ResultScreenState extends State<ResultScreen> {
         String statusTitle;
         String statusSubtitle;
 
-        if (readinessScore >= 75) {
+        if (readinessScore >= 70) {
           statusColor = PulseColors.optimal;
           statusTitle = 'RECOVERED';
           statusSubtitle = 'Low Stress & High Readiness';
@@ -449,7 +449,7 @@ class _ResultScreenState extends State<ResultScreen> {
         Widget content;
 
         if (score != null) {
-          if (score >= 75) {
+          if (score >= 70) {
             dotColor = PulseColors.optimal;
           } else if (score >= 50) {
             dotColor = PulseColors.moderate;
@@ -547,9 +547,9 @@ class _ResultScreenState extends State<ResultScreen> {
           children: [
             _buildLegendItem(PulseColors.fatigueRed, 'FATIGUE (<50)'),
             const SizedBox(width: 8),
-            _buildLegendItem(PulseColors.moderate, 'MODERATE (50-74)'),
+            _buildLegendItem(PulseColors.moderate, 'MODERATE (50-69)'),
             const SizedBox(width: 8),
-            _buildLegendItem(PulseColors.optimal, 'OPTIMAL (≥75)'),
+            _buildLegendItem(PulseColors.optimal, 'OPTIMAL (≥70)'),
             const SizedBox(width: 8),
             _buildLegendItem(const Color(0xFFD4C8C2), 'NO DATA (—)'),
           ],

@@ -1,23 +1,31 @@
 // lib/main.dart
 //
 // PulseGuard — Biometric PPG Pulse and Stress Monitoring Application
-// Phase 6: Application entry point with dynamic routing and local state bootstrap.
+// Master entry point with InheritedWidget scope, portrait orientation lock,
+// dynamic routing, and offline-first database bootstrap.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'controllers/history_controller.dart';
+import 'controllers/measurement_controller.dart';
+import 'controllers/pulse_guard_scope.dart';
+import 'controllers/session_controller.dart';
+import 'screens/assessment_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/main_navigation_screen.dart';
-import 'services/database_service.dart';
+import 'screens/onboarding/questionnaire_part1_screen.dart';
+import 'screens/onboarding/questionnaire_part2_screen.dart';
+import 'screens/result_screen.dart';
 import 'theme/app_theme.dart';
 import 'widgets/pulsing_heart_logo.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Set preferred orientations & status bar appearance
+  // Strict portrait orientation only
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -33,28 +41,107 @@ void main() async {
   runApp(const PulseGuardApp());
 }
 
-class PulseGuardApp extends StatelessWidget {
+class PulseGuardApp extends StatefulWidget {
   const PulseGuardApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'PulseGuard',
-      debugShowCheckedModeBanner: false,
-      theme: buildPulseGuardTheme(),
-      routes: {
-        '/': (context) => const AppBootstrapScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/signup': (context) => const SignUpScreen(),
-        '/forgot_password': (context) => const ForgotPasswordScreen(),
-        '/main': (context) => const MainNavigationScreen(),
+  State<PulseGuardApp> createState() => _PulseGuardAppState();
+}
+
+class _PulseGuardAppState extends State<PulseGuardApp> {
+  late final SessionController _sessionController;
+  late final HistoryController _historyController;
+  late final MeasurementController _measurementController;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionController = SessionController();
+    _historyController = HistoryController();
+    _measurementController = MeasurementController(
+      onReadingSaved: (id, reading) {
+        _historyController.registerSavedReading(reading);
       },
-      initialRoute: '/',
+    );
+
+    // Initial load of session & telemetry logs
+    _sessionController.loadSession();
+    _historyController.load();
+  }
+
+  @override
+  void dispose() {
+    _measurementController.dispose();
+    _historyController.dispose();
+    _sessionController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PulseGuardScope(
+      sessionController: _sessionController,
+      historyController: _historyController,
+      measurementController: _measurementController,
+      child: MaterialApp(
+        title: 'PulseGuard',
+        debugShowCheckedModeBanner: false,
+        theme: buildPulseGuardTheme(),
+        initialRoute: '/',
+        routes: {
+          '/': (context) => const AppBootstrapScreen(),
+          '/login': (context) => const LoginScreen(),
+          '/signup': (context) => const SignUpScreen(),
+          '/forgot': (context) => const ForgotPasswordScreen(),
+          '/forgot_password': (context) => const ForgotPasswordScreen(),
+          '/onboarding/1': (context) {
+            final session = PulseGuardScope.of(context).sessionController;
+            return QuestionnairePart1Screen(
+              fullName: session.profile?.name ?? 'User',
+              email: session.profile?.email ?? 'user@pulseguard.io',
+            );
+          },
+          '/onboarding/2': (context) {
+            final args =
+                ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+            final session = PulseGuardScope.of(context).sessionController;
+            return QuestionnairePart2Screen(
+              fullName: args?['fullName'] ?? session.profile?.name ?? 'User',
+              email: args?['email'] ?? session.profile?.email ?? 'user@pulseguard.io',
+              sex: args?['sex'] ?? 'Male',
+              dob: args?['dob'] ??
+                  DateTime.now().subtract(const Duration(days: 365 * 25)),
+              age: args?['age'] ?? 25,
+              height: args?['height'] ?? "5' 9\"",
+              weight: args?['weight'] ?? '70',
+              cardiacDevices: (args?['cardiacDevices'] as List<String>?) ??
+                  const ['None'],
+              cardiacEvents: (args?['cardiacEvents'] as List<String>?) ??
+                  const ['None'],
+            );
+          },
+          '/main': (context) => const MainNavigationScreen(),
+          '/assessment': (context) {
+            final scope = PulseGuardScope.of(context);
+            return AssessmentScreen(
+              measurementController: scope.measurementController,
+              historyController: scope.historyController,
+            );
+          },
+          '/result': (context) {
+            final scope = PulseGuardScope.of(context);
+            return ResultScreen(
+              measurementController: scope.measurementController,
+              historyController: scope.historyController,
+            );
+          },
+        },
+      ),
     );
   }
 }
 
-/// Initial launch decider: checks SQLite for existing profile.
+/// Initial launch decider: checks SQLite session for existing profile.
 class AppBootstrapScreen extends StatefulWidget {
   const AppBootstrapScreen({super.key});
 
@@ -71,22 +158,24 @@ class _AppBootstrapScreenState extends State<AppBootstrapScreen> {
 
   Future<void> _checkInitialRoute() async {
     try {
-      // Add a slight natural delay to show the branded splash and heartbeat
-      await Future<void>.delayed(const Duration(milliseconds: 1800));
+      // Natural delay to showcase brand heartbeat logo
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
 
-      final profile = await DatabaseService.instance.fetchCurrentProfile();
+      if (!mounted) return;
+      final session = PulseGuardScope.of(context).sessionController;
+      await session.loadSession();
+
       if (!mounted) return;
 
-      if (profile != null) {
-        // Registered user exists -> Go directly to main app dashboard
+      if (session.isAuthenticated) {
+        // Local profile found -> Go to dashboard
         Navigator.of(context).pushReplacementNamed('/main');
       } else {
-        // First launch -> Go to login & authentication flow
+        // First launch -> Authenticate
         Navigator.of(context).pushReplacementNamed('/login');
       }
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      // On error, fallback to login
       Navigator.of(context).pushReplacementNamed('/login');
     }
   }
