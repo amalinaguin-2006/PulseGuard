@@ -23,6 +23,10 @@ class PpgReading {
   /// ISO-8601 timestamp of when this reading was captured.
   final String timestamp;
 
+  /// Parsed [DateTime] representation of [timestamp].
+  DateTime get dateTime =>
+      DateTime.tryParse(timestamp) ?? DateTime.fromMillisecondsSinceEpoch(0);
+
   /// Instantaneous heart rate in beats per minute.
   final double bpm;
 

@@ -95,6 +95,9 @@ class PpgCameraService {
   /// Broadcast stream emitting parsed [PpgFrameSample]s at the camera's frame rate (~30 FPS).
   Stream<PpgFrameSample> get sampleStream => _sampleController.stream;
 
+  /// Alias for [sampleStream].
+  Stream<PpgFrameSample> get frameStream => sampleStream;
+
   /// Whether the camera is currently actively capturing and streaming frames.
   bool get isStreaming => _isStreaming;
 
@@ -205,6 +208,22 @@ class PpgCameraService {
 
       try {
         await _controller!.setFocusMode(FocusMode.auto);
+      } catch (_) {}
+    }
+  }
+
+  /// Alias for [startAcquisition].
+  Future<void> startStreaming({CameraDescription? camera}) =>
+      startAcquisition(camera: camera);
+
+  /// Alias for [stopAcquisition].
+  Future<void> stopStreaming() => stopAcquisition();
+
+  /// Explicitly sets the device torch mode on or off.
+  Future<void> setTorch(bool enable) async {
+    if (_controller != null && _controller!.value.isInitialized) {
+      try {
+        await _controller!.setFlashMode(enable ? FlashMode.torch : FlashMode.off);
       } catch (_) {}
     }
   }

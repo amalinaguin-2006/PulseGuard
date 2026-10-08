@@ -331,6 +331,9 @@ class SignalProcessorService {
     _baselineRmssdMs = (rmssdMs != null && rmssdMs > 0) ? rmssdMs : null;
   }
 
+  /// Direct entry point to feed a single sample into the pipeline.
+  void processSample(PpgFrameSample sample) => _onSample(sample);
+
   /// Starts consuming [source]. Replaces any previous subscription.
   void bind(Stream<PpgFrameSample> source) {
     if (_disposed) {
