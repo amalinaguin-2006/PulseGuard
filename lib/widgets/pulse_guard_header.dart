@@ -30,24 +30,31 @@ class PulseGuardHeader extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text('PulseGuard', style: PulseTextStyles.brandTitle),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                _greeting(),
-                style: PulseTextStyles.bodyMedium.copyWith(
-                  color: PulseColors.crimsonLight,
-                  fontWeight: FontWeight.w600,
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _greeting(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PulseTextStyles.bodyMedium.copyWith(
+                    color: PulseColors.crimsonLight,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
-              Text(
-                userName,
-                style: PulseTextStyles.body.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: PulseColors.textDark,
+                Text(
+                  userName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: PulseTextStyles.body.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: PulseColors.textDark,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

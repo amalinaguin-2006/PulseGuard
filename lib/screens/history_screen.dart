@@ -347,14 +347,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   List<double> _deriveWeeklyDataPoints(List<PpgReading> readings) {
     if (readings.isEmpty) {
-      return [72.0, 68.0, 81.0, 64.0, 75.0, 84.0, 81.0];
+      return [];
     }
-    // Return last up to 7 scores or pad to 7
-    final scores = readings.take(7).map((r) => (100.0 - r.stressIndex).clamp(10.0, 100.0)).toList().reversed.toList();
-    while (scores.length < 7) {
-      scores.insert(0, 70.0 + (scores.length * 3.0) % 15.0);
-    }
-    return scores;
+    // Return actual measured scores (oldest first, up to 7 real readings)
+    return readings
+        .take(7)
+        .map((r) => (100.0 - r.stressIndex).clamp(10.0, 100.0))
+        .toList()
+        .reversed
+        .toList();
   }
 
   Widget _buildReadingItem(PpgReading r) {
